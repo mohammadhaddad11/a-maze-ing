@@ -1,0 +1,21 @@
+[project]
+name = "mazegen"
+version = "0.1.0"
+description = "Maze generation reusable module"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.0"]
+license = "MIT"
+license-files = ["LICENSE.md"]
+
+[dependency-groups]
+dev = ["flake8", "mypy", "build"]
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "mazegen"
+
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
