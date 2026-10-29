@@ -4,7 +4,6 @@ import random
 
 from .config import Config
 from .pattern import find_42_cells
-from .union_find import DisjointSet
 from .walls import DIRECTIONS, Wall
 
 
@@ -23,7 +22,6 @@ class MazeGenerator:
         self._rng = random.Random(config.seed)
         self._maze: list[list[int]] = []
         self._blocked: set[tuple[int, int]] = set()
-        self._sets = DisjointSet([])
         self._cells: list[tuple[int, int]] = []
         self._edges: list[tuple[tuple[int, int], tuple[int, int]]] = []
         self._cycles = 0
@@ -33,12 +31,15 @@ class MazeGenerator:
         self._blocked = find_42_cells(self._config)
         for _ in range(self.MAX_ATTEMPTS):
             self._reset()
+            # A connected graph has E - V + 1 edges beyond a spanning tree:
+            # this is its capacity for independent cycles.
             if (not self._config.perfect
                     and len(self._edges) - len(self._cells) + 1
                     < self.MIN_LOOPS):
                 raise ValueError(
-                    "Maze graph cannot support the required number of loops")
-            self._kruskal()
+                    "Maze graph cannot support the required number of loops"
+                )
+            self._dfs()
             if not self._valid_maze():
                 continue
             if self._config.perfect:
@@ -54,9 +55,9 @@ class MazeGenerator:
         )
 
     def _reset(self) -> None:
-        """Reset walls and Union-Find, retaining the chosen pattern."""
+        """Reset walls and collect the unblocked cells and possible edges."""
         self._maze = [
-            [Wall.ALL] * self._width for _ in range(self._height)
+            [int(Wall.ALL)] * self._width for _ in range(self._height)
         ]
         cells = [
             (row, col)
@@ -65,15 +66,14 @@ class MazeGenerator:
             if (row, col) not in self._blocked
         ]
         self._cells = cells
-        self._sets = DisjointSet(cells)
         self._edges = []
         for cell in cells:
             row, col = cell
             right = (row, col + 1)
             down = (row + 1, col)
-            if right in self._cells:
+            if col + 1 < self._width and right not in self._blocked:
                 self._edges.append((cell, right))
-            if down in self._cells:
+            if row + 1 < self._height and down not in self._blocked:
                 self._edges.append((cell, down))
         self._cycles = 0
 
@@ -93,12 +93,36 @@ class MazeGenerator:
         self._maze[a[0]][a[1]] &= ~int(wall)
         self._maze[b[0]][b[1]] &= ~int(opposite)
 
-    def _kruskal(self) -> None:
-        """Build a spanning tree with Randomized Kruskal."""
-        self._rng.shuffle(self._edges)
-        for a, b in self._edges:
-            if self._sets.union(a, b):
-                self._open_wall(a, b)
+    def _dfs(self) -> None:
+        """Build a spanning tree with randomized iterative DFS."""
+        if not self._cells:
+            return
+
+        visited = {self._cells[0]}
+        stack = [self._cells[0]]
+        while stack:
+            row, col = stack[-1]
+            neighbors = []
+            for dr, dc, _, _, _ in DIRECTIONS:
+                neighbor = (row + dr, col + dc)
+                if (0 <= neighbor[0] < self._height
+                        and 0 <= neighbor[1] < self._width
+                        and neighbor not in self._blocked
+                        and neighbor not in visited):
+                    neighbors.append(neighbor)
+            if not neighbors:
+                stack.pop()
+                continue
+            neighbor = self._rng.choice(neighbors)
+            self._open_wall((row, col), neighbor)
+            visited.add(neighbor)
+            stack.append(neighbor)
+
+        if len(visited) != len(self._cells):
+            raise ValueError(
+                "The 42 pattern separates the walkable area into "
+                "disconnected regions"
+            )
 
     def _open_count(self, cell: tuple[int, int]) -> int:
         """Return the number of open sides for a cell."""
@@ -123,6 +147,8 @@ class MazeGenerator:
         self, a: tuple[int, int], b: tuple[int, int]
     ) -> bool:
         """Inspect only 3-by-3 blocks containing the changed shared wall."""
+        # A newly open 3x3 region must contain both cells of this wall;
+        # every other region has unchanged walls.
         first_row = max(0, max(a[0], b[0]) - 2)
         last_row = min(min(a[0], b[0]), self._height - 3)
         first_col = max(0, max(a[1], b[1]) - 2)
@@ -165,6 +191,8 @@ class MazeGenerator:
                         and self._maze[row][col] & wall):
                     candidates.append(neighbor)
             self._rng.shuffle(candidates)
+            # Stable sorting prefers dead ends without losing the shuffled
+            # order among candidates with the same priority.
             candidates.sort(key=lambda other: self._open_count(other) != 1)
             for neighbor in candidates:
                 if self._try_loop(cell, neighbor):
@@ -196,10 +224,7 @@ class MazeGenerator:
         )
 
     def _valid_maze(self) -> bool:
-        """Check connectivity, wall agreement, borders, and blocked cells."""
-        roots = {self._sets.find(cell) for cell in self._cells}
-        if self._cells and len(roots) != 1:
-            return False
+        """Check wall agreement, borders, and blocked cells."""
         for row in range(self._height):
             for col in range(self._width):
                 value = self._maze[row][col]
