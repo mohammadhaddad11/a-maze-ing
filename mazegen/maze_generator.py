@@ -171,7 +171,7 @@ class MazeGenerator:
 
     def _is_3x3_open(self, a: tuple[int, int], b: tuple[int, int]) -> bool:
         """Check if the changed wall creates a fully open 3x3 area."""
-        def is_open(row, col):
+        def is_open(row: int, col: int) -> bool:
             """ check if there is 3x3"""
             for r in range(row, row + 3):
                 for c in range(col, col + 3):

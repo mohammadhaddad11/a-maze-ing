@@ -57,23 +57,20 @@ def run_menu(config: Config, rend: Renderer) -> None:
                     config.seed += 1
                     maze, solution = generation(config)
                     rend.update(maze, solution)
-                    rend.render()
                 case 2:
                     rend.toggle_path()
-                    rend.render()
                 case 3:
                     rend.randomize_color()
-                    rend.render()
                 case 4:
                     rend.rotate_path_color()
-                    rend.render()
                 case 5:
                     rend.rotate_pattern_color()
-                    rend.render()
                 case 6:
                     break
                 case _:
                     print("Please enter a number from 1 to 6.")
+                    continue
+            rend.render()
         except OverflowError:
             print("Error: WIDTH or HEIGHT is too large for this system.")
         except (OSError, ValueError, MemoryError) as error:

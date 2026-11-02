@@ -1,375 +1,311 @@
-*This project was created as part of the 42 curriculum by mhaddad and domansou.*
+*This activity has been created as part of the 42 curriculum by mhaddad, domansou.*
 
 # A-Maze-ing
 
-A-Maze-ing turns a configuration file into a maze that can be generated,
-solved, exported, and explored in a terminal. The same generation and solving
-components are available as the reusable Python package `mazegen`, so another
-program can use the maze grid without opening the interactive viewer.
+## Description
 
-The implementation combines randomized Kruskal generation, Union-Find component
-tracking, optional passage braiding, BFS shortest-path solving, and a Unicode
-renderer. Its central design decision is to share one four-bit wall
-representation across generation, solving, output, and display.
+A-Maze-ing is a Python project that generates a maze from a configuration file,
+finds a shortest path, exports hexadecimal wall data, and displays the result in
+an interactive Unicode terminal. The goal is to practise algorithms, modular
+programming, and building a reusable Python package.
 
-## Build and run
+The generator uses Randomized Kruskal with Union-Find and optional braiding. Both
+modes keep ordinary cells connected, shared walls coherent, external borders
+closed, and avoid fully open 3×3 areas. Fully closed cells form a visible “42”
+when an eligible placement exists; physically undersized mazes report that the
+pattern was omitted, while fitting mazes must have a legal placement.
 
-Requirements: Python **3.10+**, [uv](https://docs.astral.sh/uv/), Make, and a
-Unix-like terminal with Unicode and ANSI support. Pydantic v2 is the runtime
-dependency; `make install` also installs development tools.
+## Instructions
+
+Use Python 3.10 or later, [uv](https://docs.astral.sh/uv/), Make, and a Unix-like
+terminal supporting Unicode, ANSI colors, and cursor movement. Pydantic is the
+runtime dependency. Run these commands from the project root; Python source
+does not need a separate compilation step:
 
 ```sh
-git clone git@github.com:mohammadhaddad11/a-maze-ing.git
-cd a-maze-ing
 make install
+. .venv/bin/activate
+python3 a_maze_ing.py config.txt
+```
+
+`make install` runs `uv sync` to prepare the environment and development tools.
+The program accepts exactly one argument: a configuration filename, which can
+be different from `config.txt`. You can also run it with:
+
+```sh
 make run
+# Or use a different configuration file:
+# Replace config.txt below with that filename.
+uv run python a_maze_ing.py config.txt
 ```
 
-`make install` runs `uv sync`; `make run` uses the supplied `config.txt`.
-To supply a different existing file, run `uv run python a_maze_ing.py` followed
-by its path. `make debug` starts the same application through pdb.
+`make run` uses the supplied `config.txt`; `make debug` runs it through `pdb`.
+The terminal must have at least `max(3 * WIDTH + 2, 30)` columns and
+`2 * HEIGHT + 11` rows, including room for the menu. The supplied 40×20 grid
+needs 122 columns and 51 rows. Enlarge the terminal or zoom out if needed.
+A successful non-interactive run exports the maze, then reports that display
+requires a terminal. Relative file paths use the current working directory.
 
-The default 10×10 maze needs at least **32 columns × 31 rows** for the viewer
-and menu. For other sizes, the renderer requires `max(3 × WIDTH + 2, 30)`
-columns and `2 × HEIGHT + 11` rows. Both stdin and stdout must be terminals.
+### Configuration format
 
-## A real generated layout
+Use one `KEY=VALUE` pair per line, in any order. Blank lines and comment lines
+starting with `#` (also after indentation) are ignored. Comments occupy their
+own line. Keys are case-insensitive and surrounding key/value whitespace is
+ignored. Duplicate or unknown keys, missing required keys, and invalid values
+are reported as errors.
 
-This is the uncolored wall canvas produced by the supplied 10×10, non-perfect,
-seed-3 configuration. It is also stored in
-[`docs/maze-example.txt`](docs/maze-example.txt):
+| Key | Required | Recommended format |
+| --- | --- | --- |
+| `WIDTH` | Yes | Positive integer number of columns |
+| `HEIGHT` | Yes | Positive integer number of rows |
+| `ENTRY` | Yes | Nonnegative integers `x,y`, inside the grid |
+| `EXIT` | Yes | Nonnegative integers `x,y`, inside the grid; different from entry |
+| `OUTPUT_FILE` | Yes | Nonempty output filename/path |
+| `PERFECT` | Yes | `True` or `False`, case-insensitive |
+| `SEED` | No | Nonnegative integer; generated from 1 through 1,000,000 when omitted |
+
+For clarity, write numbers as decimal digits without signs, use `True`/`False`
+for booleans, and write coordinates without spaces around the comma.
+These recommendations are not all strict validation rules: Pydantic also
+accepts signed integer strings such as `+2`, seeds may be negative, and boolean
+strings such as `yes`/`no` or `1`/`0` are accepted case-insensitively. Width and
+height must still be positive. Coordinate strings are checked separately and
+must contain two digit-only components separated by a comma.
+
+The supplied `config.txt` contains:
 
 ```text
-┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃              ┃              ┃
-┃  ┏━━━━━╸  ╻  ╹     ╻  ╺━━╸  ┃
-┃  ┃        ┃        ┃        ┃
-┃  ┃  ┏━━┓  ┗━━━━━┳━━╋━━┳━━┓  ┃
-┃  ┃  ┃  ┃        ┃  ┃  ┃  ┃  ┃
-┃  ┃  ┣━━┫     ╻  ┗━━┻━━╋━━┫  ┃
-┃  ┃  ┃  ┃     ┃        ┃  ┃  ┃
-┃  ╹  ┣━━╋━━┳━━┫  ┏━━┳━━╋━━┫  ┃
-┃     ┃  ┃  ┃  ┃  ┃  ┃  ┃  ┃  ┃
-┃  ╺━━┻━━┻━━╋━━┫  ┣━━╋━━┻━━┛  ┃
-┃           ┃  ┃  ┃  ┃        ┃
-┃  ╺━━┓     ┣━━┫  ┣━━╋━━┳━━┓  ┃
-┃     ┃     ┃  ┃  ┃  ┃  ┃  ┃  ┃
-┃  ╻  ┗━━┳━━┻━━┫  ┗━━┻━━┻━━┫  ┃
-┃  ┃     ┃     ┃           ┃  ┃
-┃  ┗━━╸  ╹     ╹  ╻  ╺━━┓  ╹  ┃
-┃                 ┃     ┃     ┃
-┃     ╻     ╻  ╺━━┻━━╸  ┗━━╸  ┃
-┃     ┃     ┃                 ┃
-┗━━━━━┻━━━━━┻━━━━━━━━━━━━━━━━━┛
-```
-
-The live renderer adds colored closed-cell interiors for the `42` motif,
-entry `E`, exit `X`, and an initially visible solution path. The plain canvas
-shows geometry only; it does not pretend to capture the ANSI overlays.
-
-## Architecture and execution flow
-
-```text
-configuration file
-       │
-       ▼
-Parser → Config validation
-       │
-       ▼
-MazeGenerator ── pattern placement + Union-Find
-       │
-       ▼
-wall-bit grid → BFS → N/E/S/W route
-       │                   │
-       └─────────┬─────────┘
-                 ├── exporter → hexadecimal file
-                 └── renderer → canvas, styles, interactive menu
-```
-
-[`a_maze_ing.py`](a_maze_ing.py) is the application layer. `main()` reads one
-configuration filename, `generation(config)` generates/solves/exports, then a
-`Renderer` displays the result and `run_menu` handles interaction. Generation
-errors propagate to the application for reporting rather than being hidden
-inside the output writer.
-
-| Component | Responsibility |
-| --- | --- |
-| [`parser.py`](mazegen/parser.py), [`config.py`](mazegen/config.py) | Read settings and validate their types/relationships |
-| [`walls.py`](mazegen/walls.py) | Wall bits, direction offsets, opposite walls, solver letters |
-| [`pattern.py`](mazegen/pattern.py) | Select cells reserved for the closed-wall `42` motif |
-| [`maze_generator.py`](mazegen/maze_generator.py) | Build/validate a tree, then optional loops |
-| [`union_find.py`](mazegen/union_find.py) | Track connected components during Kruskal generation |
-| [`solver.py`](mazegen/solver.py) | Find and reconstruct a shortest route |
-| [`exporter.py`](mazegen/exporter.py) | Serialize grid, endpoints, and route |
-| [`canvas.py`](mazegen/canvas.py), [`symbols.py`](mazegen/symbols.py) | Convert walls to segments and junction glyphs |
-| [`renderer.py`](mazegen/renderer.py) | Apply colors/overlays and enforce terminal requirements |
-
-## Configuration: text parsing and model validation
-
-The supplied [`config.txt`](config.txt) contains:
-
-```ini
-WIDTH=10
-HEIGHT=10
+WIDTH=40
+HEIGHT=20
 ENTRY=0,0
-EXIT=9,9
+EXIT=19,14
 OUTPUT_FILE=maze.txt
 PERFECT=False
-SEED=3
 ```
 
-All keys except `SEED` are required. Width/height must be positive; endpoints
-must be distinct and inside the grid; the output filename must be nonempty.
-Coordinates use **x first, y second**. Relative input/output paths are resolved
-from the working directory.
+`PERFECT` must be provided explicitly; the supplied configuration selects
+`False` and omits `SEED`. The parser therefore generates an integer from 1
+through 1,000,000 at startup. An explicit seed with the same other parameters
+reproduces the maze. Regeneration increments the current seed.
 
-`Parser.read_config` ignores blank lines and whole-line `#` comments, splits
-each setting on `=`, trims surrounding whitespace, and lowercases its key.
-It rejects extra `=` signs and duplicate keys, including differently cased
-duplicates. Inline comments are not a supported grammar feature.
+### Menu and display
 
-The resulting dictionary goes through Pydantic `Config`, which forbids unknown
-keys. A before-validator turns digit-only `x,y` strings into tuples; an after-
-validator checks bounds and endpoint distinctness. Write coordinate values
-without parentheses or spaces around the comma.
+1. Re-generate maze
+2. Show/Hide shortest path
+3. Change maze wall colors
+4. Change solution path color
+5. Change 42 pattern color
+6. Exit
 
-This is not strict parsing of every scalar: Pydantic accepts some integer and
-boolean coercions, and an explicit seed may be negative. Prefer decimal
-dimensions and `True`/`False` for readability. With no seed, the parser chooses
-one from 1 to 1,000,000 and prints it. Parsing failures print an error and return
-`None` rather than a partially valid configuration.
+Enter a number at `Choice (1-6): ` and press Enter. `E` marks the entry and `X`
+the exit. The shortest path is initially shown in cyan; the 42 interiors are
+initially white. Option 3 randomly selects a different wall color; options 4
+and 5 cycle the path and pattern colors. Hiding the path keeps both endpoints
+visible. Regeneration rewrites the output file and retains visibility and all
+three color settings. EOF and Ctrl-C exit cleanly.
 
-## Internal representation: closed walls as bits
+The canvas builds Unicode walls and junctions from wall bits, using four
+columns and two rows per cell. The renderer overlays endpoints, the path, and
+the 42 pattern, then prints the colored canvas using ANSI colors. Color changes
+affect the display, not the maze or exported data.
 
-Each row-major grid cell is an integer whose four low bits describe closed walls:
+### Output format
 
-| Direction | Decimal bit | Hex bit |
-| --- | ---: | --- |
-| North | 1 | `1` |
-| East | 2 | `2` |
-| South | 4 | `4` |
-| West | 8 | `8` |
+`OUTPUT_FILE` is overwritten with:
 
-`F` (`15`) means all walls closed. Testing `cell & Wall.EAST` asks whether the
-east wall is present. Opening it clears that bit, rather than setting an
-“open” flag. The neighbor's opposite wall must also be cleared:
+1. Exactly `HEIGHT` rows, each containing `WIDTH` uppercase hexadecimal digits
+   (`0`–`F`), one digit per cell, ordered left to right and top to bottom.
+2. One empty line.
+3. Entry coordinates as `x,y`.
+4. Exit coordinates as `x,y`.
+5. The shortest path as a string containing only `N`, `E`, `S`, and `W`.
 
-```text
-left:  F & ~EAST = D     right: F & ~WEST = 7
-          same shared passage, recorded in both cells
-```
+Every line, including the last, ends with `\n`. There are no spaces, labels, or
+ANSI color codes in the output. Each digit encodes closed walls:
 
-The shared direction tuple includes row/column offsets and opposite bits so
-generation and solving use the same convention. Configuration/renderer endpoints
-are `(x,y)`, but generator cells and `BFS` endpoints are `(row,column)`.
-The application swaps coordinates explicitly when constructing the solver.
+| Bit | Value | Direction |
+| --- | --- | --- |
+| 0 | 1 | North |
+| 1 | 2 | East |
+| 2 | 4 | South |
+| 3 | 8 | West |
 
-## Generation, step by step
+A set bit means closed; an unset bit means open. For example, `3` closes north
+and east, and `F` closes all four walls. Configuration and footer coordinates
+use `(x,y)`; maze arrays and BFS coordinates use `(row,column)`.
 
-### 1. Reserve the `42` cells
+## Algorithms and technical choices
 
-The motif is defined by a five-row, seven-column occupancy pattern:
+We chose **Randomized Kruskal** because it is direct to explain and naturally
+produces a spanning tree. The generator lists ordinary cells and candidate
+edges in row-major order, shuffles the edges using the configured seed, and
+opens both sides of a shared wall when **Union-Find** joins two components.
 
-```text
-1000111
-1000001
-1110111
-0010100
-0010111
-```
+- **Perfect mode (`PERFECT=True`):** the ordinary cells form a spanning tree,
+  with no loops and exactly one path between any two ordinary cells.
+- **Non-perfect mode (`PERFECT=False`):** braiding opens extra passages at dead
+  ends, then a loop pass ensures at least two independent cycles. A board is
+  accepted only with at most two dead ends; the four corners and centre remain
+  reachable ordinary cells. Openings that create a fully open 3×3 area are
+  rejected. Generation tries at most 30 layouts before reporting failure.
 
-Only `1` positions are blocked; `0` positions remain ordinary maze cells.
-Candidate placements are ordered by Manhattan distance from the center, with
-row/column tie-breaks. The first placement avoiding entry and exit is chosen.
-Non-perfect mode also protects the four corners and center.
+The 42 placement protects entry and exit, and also the corners and centre in
+non-perfect mode. The complete pattern is centered as closely as possible;
+valid positions are tried from closest to farthest with deterministic
+row-and-column tie-breaking. A physically undersized grid omits the pattern,
+but a fitting grid with no legal placement raises an error. Grids without room
+for two loops cannot be used in non-perfect mode.
 
-A grid physically smaller than the motif omits it with a message. A sufficiently
-large grid that has no legal placement raises an error instead of silently
-dropping the pattern. Placement avoids required cells; graph connectivity is
-validated afterward, so valid dimensions alone do not guarantee generation.
+**Breadth-first search (BFS)** explores open passages using a queue, records
+parent links, and reconstructs an `N/E/S/W` route. Since each step has equal
+cost, the returned route is shortest in either mode.
 
-### 2. Initialize the graph
+## Reusing mazegen
 
-`_reset` fills the grid with `F`, creates the list of ordinary cells, and
-enumerates candidate edges to right/down neighbors. Considering those two
-directions avoids listing every undirected edge twice. Blocked cells never
-become passage endpoints and remain fully closed.
+`mazegen/` is the reusable package, exporting `Config`, `Parser`,
+`MazeGenerator`, `solver`, `Renderer`, and `Wall`. Its `__init__.py` includes API
+documentation. `LICENSE.md` uses the MIT license, allowing reuse and
+distribution under its terms. The modules have these roles:
 
-`DisjointSet` creates one component per ordinary cell. Its parent dictionary
-tracks component roots; its size dictionary supports balanced merging.
+| Module | Responsibility |
+| --- | --- |
+| `config.py`, `parser.py` | Pydantic value validation; reading `KEY=VALUE` files |
+| `walls.py`, `union_find.py`, `pattern.py` | Wall bits; connected components; 42 placement |
+| `maze_generator.py`, `solver.py` | Randomized Kruskal and braiding; BFS shortest path |
+| `symbols.py`, `canvas.py`, `renderer.py` | Unicode glyphs; wall geometry and junctions; colored display and overlays |
+| `exporter.py` | Exact subject output file format |
 
-### 3. Build a spanning tree with randomized Kruskal
+Generation can be used without the interactive application and does not write
+files or launch a display:
 
-The generator shuffles edges with its own `random.Random(seed)`. For each edge:
-
-1. Find each endpoint's component root.
-2. If roots match, skip the edge: opening it would create a cycle.
-3. Otherwise join the smaller component under the larger one and open the
-   shared wall on both cells.
-
-`find` compresses parent paths, shortening future lookups. When ordinary cells
-form a connected candidate graph, the selected passages connect them without
-cycles. `_valid_maze` checks the component result, reciprocal walls, closed
-external borders, and intact blocked cells before returning perfect mode.
-
-For **V ordinary cells**, a connected perfect maze has V−1 undirected passages
-and one path between any pair. Reserved cells are excluded from that statement.
-
-### 4. Add legal passages for non-perfect mode
-
-`_braid` visits shuffled dead ends, preferring openings toward other dead ends.
-`_try_loop` opens a candidate wall, checks affected 3×3 blocks, and rolls back
-if it would create a fully open area. `_add_loops` then opens more candidates
-if the minimum cycle count has not been reached.
-
-Non-perfect acceptance requires at least **two independent cycles**, at most
-**two dead ends**, and degree at least two at corners and the center. Extra
-passages make multiple routes possible while BFS still identifies a shortest
-one. This is more restrictive than merely deleting a random wall from a tree.
-
-Generation can retry up to 30 times. An edge-capacity check rejects graphs that
-cannot support two cycles before doing futile braiding. The same blocked motif
-is retained between attempts; retries reshuffle generation, not pattern placement.
-
-### Cost and repeatability
-
-Union-Find makes component operations efficient, but the complete generator
-also performs list-membership checks, pattern searches, validation, and possible
-retries. It should not be advertised as uniformly linear-time. A fixed explicit
-seed/settings reproduce the observed layout; repeated calls on one generator
-advance its RNG, so create a new instance for a fresh same-seed reproduction.
-
-## Solving: BFS and route reconstruction
-
-`BFS.solve()` starts at the entry with a `deque`, visited set, and parent map.
-It examines reachable neighbors in fixed north/east/south/west order. A neighbor
-must be in bounds and have no blocking wall in the current cell.
-
-When discovering a cell, the solver records its parent and direction letter.
-After reaching the exit, it follows parent links backward, reverses the collected
-letters, and returns one shortest `N/E/S/W` string. If the exit was never reached,
-it raises `ValueError`.
-
-BFS is O(V+E) for this unweighted grid, with O(V) auxiliary storage. In a braided
-maze several equally short routes may exist; direction order resolves the
-search consistently. The solver does not independently repair an incoherent
-external grid; generation is responsible for those invariants.
-
-## Export format, with an actual small example
-
-`write_output` overwrites its UTF-8 destination using LF line endings. It writes
-HEIGHT rows of WIDTH uppercase hex digits, a blank line, entry, exit, and route,
-each followed by newline.
-
-A generated **2×2 perfect maze, seed 3**, entry `(0,0)` and exit `(1,1)`, exports:
-
-```text
-D3
-D6
-
-0,0
-1,1
-ES
-```
-
-The grid is too small for the motif, so the generator separately prints its
-omission message; that message is not written into the export. `ES` means move
-east from the entry, then south to the exit. The outer border remains closed:
-entry/exit are cell markers, not holes cut in the external wall.
-
-## Terminal geometry and interaction
-
-`build_canvas` maps each cell to three character columns and two rows. It draws
-wall segments, then resolves every intersection by inspecting neighboring
-segments and looking up the corresponding Unicode junction glyph. The screen
-coordinates are different from both configuration and solver coordinates.
-
-`Renderer` overlays reserved-cell backgrounds, the optional solution path,
-and endpoint markers. Colors/path visibility are display state, not changes
-to the generated wall grid. `render()` clears/redraws and resets ANSI styling.
-
-The menu can regenerate, toggle the route, change wall color, cycle path/pattern
-backgrounds, or exit. Regeneration increments the seed, generates/exports a new
-grid, and updates the existing renderer while keeping its display settings.
-EOF and Ctrl-C are handled at application level.
-
-Export occurs **before terminal validation**. A noninteractive run can therefore
-write a file and then report a display error. Several CLI error paths print a
-message and return without a nonzero process status, so status zero alone is
-not proof of successful display or generation.
-
-## Reusable API and packaging
-
-The package exports `Config`, `MazeGenerator`, `Parser`, `Renderer`, `Wall`, and
-the `solver` module. A caller can generate/solve without a terminal or file write:
-
-```sh
-uv run python - <<'PY'
+```python
 from mazegen import Config, MazeGenerator, solver
 
-config = Config(width=20, height=15, entry=(0, 0), exit=(19, 14),
-                output_file="maze.txt", perfect=True, seed=3)
-maze = MazeGenerator(config).generate()
-entry = (config.entry[1], config.entry[0])
+config = Config(
+  width=20,
+  height=15,
+  entry=(0, 0),
+  exit=(19, 14),
+  output_file="maze.txt",
+  perfect=True,
+  seed=3,
+)
+generator = MazeGenerator(config)
+maze = generator.generate()  # list[list[int]], indexed as maze[row][column]
+entry_cell = (config.entry[1], config.entry[0])
 exit_cell = (config.exit[1], config.exit[0])
-route = solver.BFS(maze, entry, exit_cell).solve()
-print(len(maze), len(maze[0]))
-print(len(route), set(route) <= set("NESW"))
-PY
+solution = solver.BFS(maze, entry_cell, exit_cell).solve()
+print(maze[0][0], solution)
 ```
 
-`output_file` is required configuration even in this example, but no file is
-written until the caller invokes `mazegen.exporter.write_output` or uses the
-application's `generation()` function. The first printed dimensions are
-`15 20`: rows first, then columns.
+Change the size, endpoints, mode, and seed in the named `Config` fields to pass
+custom parameters. `generate()` returns the maze as a row-major `list[list[int]]`
+of wall-bit values; `BFS.solve()` returns a shortest direction string.
+Invalid/impossible generator parameters or an unreachable BFS exit raise
+`ValueError`. `Parser().read_config("config.txt")` can read a configuration,
+returning `None` after reporting a parsing/file error. `Config` is defined in
+`mazegen.config` and validates values independently of file parsing. To write
+the same subject output format from another application, call
+`mazegen.exporter.write_output(config, maze, solution)`.
+
+### Build and install the distributable
+
+The package uses the `uv_build` backend configured in `pyproject.toml`. To build
+a wheel from the current sources at the project root:
 
 ```sh
-uv build
+make install
+uv run python -m build --wheel --outdir .
 ```
 
-[`pyproject.toml`](pyproject.toml) uses `uv_build` to produce a source distribution
-and `mazegen-0.1.0-py3-none-any.whl` under `dist/`. Install the wheel into another
-environment with `python -m pip install dist/mazegen-0.1.0-py3-none-any.whl`.
-It contains the reusable modules and MIT license, not the root interactive
-application/configuration or an installed console entry point. Test imports
-outside the checkout when checking the installed package, to avoid accidentally
-importing the source directory instead.
+The distributable is `mazegen-0.1.0-py3-none-any.whl`. To install that root-level
+wheel into a separate environment, run from the project root:
 
-## Verification and boundaries
+```sh
+python3 -m venv /tmp/mazegen-check
+/tmp/mazegen-check/bin/python -m pip install ./mazegen-0.1.0-py3-none-any.whl
+```
 
-`make lint` and `make lint-strict` passed. Representative checks covered twelve
-perfect/non-perfect dimension/seed combinations, seed repeatability, reciprocal
-walls, connectivity, cycle/dead-end conditions, shortest-route lengths, exports,
-and the generated visual above. The reusable package was built successfully.
+Use that environment's Python to run the example from outside the source
+directory when checking the installed package.
 
-These checks do not promise that every syntactically valid size can satisfy
-pattern and non-perfect constraints. Large dimensions also incur significant
-memory/work and can be rejected or fail. The project demonstrates graph
-algorithms, invariant-based design, coordinate conversion, serialization,
-terminal rendering, and reusable packaging through one shared data model.
+## Verification and maintenance
 
-## Contributors and license
+```sh
+make lint
+make clean
+```
 
-The project credits **mhaddad** and **domansou**. Existing responsibility notes
-attribute generator/renderer/parser work and final cleanup to mhaddad;
-solver/license/Makefile/packaging metadata to domansou; and application integration
-to both. Copyright (c) 2026 domansou and mhaddad.
+`lint` executes `flake8 .` and the required command:
 
-The [MIT license](LICENSE.md) applies; preserve its copyright and permission
-notice when distributing the software or reusable package.
+```sh
+mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+```
+
+`make lint-strict` additionally provides the optional `mypy . --strict` check.
+`make clean` removes Python and mypy caches. Internal regression checks are
+development-only and are not part of the submission or reusable package.
+The subject's `maze_analyzer.py`, supplied in `a_maze_ing-analyzer.tgz`, was used to
+check wall coherence, connectivity, and generation-mode verdicts.
+
+## Team and project management
+
+### Original responsibilities
+
+- **mhaddad:** `maze_generator.py`, `renderer.py`, and `parser.py`.
+  mhaddad performed the final refactoring and code cleanup during integration.
+- **domansou:** `solver.py`, `LICENSE.md`, `Makefile`, and `pyproject.toml`.
+- **Both:** shared work on `a_maze_ing.py`, which connects the components.
+
+
+
+### Planning and evolution
+
+We first divided the work into parsing, generation, solving, rendering, and
+application integration, and made each component work independently. During
+integration and subject review, configuration handling, output generation,
+terminal interactions, packaging, and edge cases needed more work. Our plan
+then shifted to testing the modules together and fixing compliance issues.
+mhaddad carried out the final refactoring and code cleanup without replacing
+the original algorithms.
+
+### What worked well and what could improve
+
+Separate modules let us work in parallel and made debugging easier. Testing
+components independently helped us locate integration problems. Sharing the
+wall-bit representation also kept generation, solving, rendering, and output
+generation consistent.
+
+If we restarted, we would define module interfaces earlier, especially between
+the renderer, solver, and main application. We would also test subject edge
+cases and packaging sooner, using an early checklist based on the PDF to
+reduce late compliance work.
+
+### Tools used
+
+Python, uv, Make, Git,  pdb, flake8, mypy, Python unittest/project test
+scripts, the Python build frontend, `maze_analyzer.py`, and ChatGPT/AI tools for explanations and review.
 
 ## Resources
 
+- [Python deque and BFS queue support](https://docs.python.org/3/library/collections.html#collections.deque)
 - [Maze generation algorithms](https://en.wikipedia.org/wiki/Maze_generation_algorithm)
-- [Disjoint-set data structure](https://en.wikipedia.org/wiki/Disjoint-set_data_structure)
-- [Python deque](https://docs.python.org/3/library/collections.html#collections.deque)
-- [Pydantic validators](https://docs.pydantic.dev/latest/concepts/validators/)
+- [Disjoint-set / Union-Find](https://en.wikipedia.org/wiki/Disjoint-set_data_structure)
+- [union find intro](https://www.youtube.com/watch?v=ibjEGG7ylHk&t=4s)
+- [Kruskal's Algorithm ](https://www.youtube.com/watch?v=JZBQLXgSGfs)
+- [path Compression](https://www.youtube.com/watch?v=VHRhJWacxis)
+- [Kruskal's Algorithm ](https://en.wikipedia.org/wiki/Kruskal%27s_algorithm)
+- [PEP 257: docstring conventions](https://peps.python.org/pep-0257/)
 - [uv build backend](https://docs.astral.sh/uv/concepts/build-backend/)
 
-## AI Usage
+### AI use
 
-The existing disclosure records AI support for explanations, review/refactoring,
-parser/renderer edge cases, integration review, and testing ideas. AI assisted
-this documentation and checking its examples. The original team attribution
-and license remain authoritative; the algorithms described are implemented in
-the project source.
+We used AI as a support tool for understanding programming and terminal-rendering
+concepts, reviewing edge cases, and reviewing/refactoring code. It helped check
+parser and renderer edge cases, review integration between the generator,
+solver, renderer, and main application, and suggest small refactoring/compliance
+improvements and testing scenarios based on the subject.
+
+The team developed the original generator, solver, parser, renderer, and project
+structure. AI mainly helped with explanations, review, testing ideas, and
+identifying edge cases.

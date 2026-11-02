@@ -5,7 +5,7 @@ from .config import Config
 
 def write_output(config: Config, maze: list[list[int]], solution: str) -> None:
     """Write maze rows, endpoints, and the BFS solution as UTF-8 text."""
-    with open(config.output_file, "w", encoding="utf-8", newline="\n") as file:
+    with open(config.output_file, "w", encoding="utf-8") as file:
         for row in maze:
             file.write("".join(f"{cell:X}" for cell in row) + "\n")
         file.write("\n")
