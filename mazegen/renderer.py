@@ -1,7 +1,6 @@
 """Apply display colors and overlays to a Unicode maze canvas."""
 
 from os import get_terminal_size
-import random
 import sys
 
 from .canvas import CELL_HEIGHT, CELL_WIDTH, build_canvas, cell_position
@@ -12,19 +11,22 @@ class Renderer:
     """Draw maze walls with endpoint and optional path overlays."""
 
     def __init__(
-        self, maze: list[list[int]], solution: str = "",
-        show_path: bool = False, entry: tuple[int, int] = (0, 0),
-        exit: tuple[int, int] | None = None, wall_color: int = 37,
-        path_color: int = 46, pattern_color: int = 47,
+        self,
+        maze: list[list[int]],
+        entry: tuple[int, int],
+        exit: tuple[int, int],
+        solution: str = "",
+        show_path: bool = False,
+        wall_color: int = 39,
+        path_color: int = 46,
+        pattern_color: int = 7,
     ) -> None:
         """Store maze, N/E/S/W solution, endpoints, and display state."""
         self._maze = maze
         self._solution = solution
         self._show_path = show_path
         self._entry = entry
-        self._exit = exit if exit is not None else (
-            len(maze[0]) - 1, len(maze) - 1,
-        )
+        self._exit = exit
         self._wall_color = wall_color
         self._path_color = path_color
         self._pattern_color = pattern_color
@@ -32,13 +34,16 @@ class Renderer:
     def render(self) -> None:
         """Redraw the maze canvas and its required overlays."""
         self._check_terminal_size()
+
         try:
             canvas = build_canvas(self._maze)
-            print(end="\x1b[2J\x1b[H")
-            print(end=f"\x1b[{self._wall_color}m")
-            print(end="\n".join(self._style_canvas(canvas)) + "\n")
+
+            print("\x1b[2J\x1b[H", end="")
+            print(f"\x1b[{self._wall_color}m", end="")
+            print("\n".join(self._style_canvas(canvas)))
+
         finally:
-            print(end="\x1b[0m", flush=True)
+            print("\x1b[0m", end="", flush=True)
 
     def _check_terminal_size(self) -> None:
         """Require a terminal large enough for the original maze and menu."""
@@ -62,50 +67,76 @@ class Renderer:
     def _style_canvas(self, canvas: list[list[str]]) -> list[str]:
         """Apply pattern, path, and endpoint overlays to canvas interiors."""
         styles: dict[tuple[int, int], int] = {}
+
+        self._color_pattern(styles)
+
+        if self._show_path:
+            self._color_path(styles)
+
+        self._mark_endpoints(canvas, styles)
+
+        return self._to_ansi(canvas, styles)
+
+    def _color_pattern(self, styles: dict[tuple[int, int], int]) -> None:
+        """Color the interiors of fully blocked cells."""
         height = len(self._maze)
         width = len(self._maze[0])
         for row in range(height):
             for col in range(width):
                 if self._maze[row][col] == int(Wall.ALL):
                     y, x = cell_position(row, col)
-                    for offset in range(CELL_WIDTH - 1):
-                        styles[(y, x + offset)] = self._pattern_color
+                    self._color_span(styles, y, x, self._pattern_color)
 
-        if self._show_path:
-            row, col = self._entry[1], self._entry[0]
-            steps = {"N": (-1, 0), "E": (0, 1),
-                     "S": (1, 0), "W": (0, -1)}
+    def _color_span(
+        self,
+        styles: dict[tuple[int, int], int],
+        y: int,
+        x: int,
+        color: int,
+    ) -> None:
+        """Color a horizontal span across a cell interior."""
+        for offset in range(CELL_WIDTH - 1):
+            styles[(y, x + offset)] = color
+
+    def _color_path(
+        self, styles: dict[tuple[int, int], int],
+    ) -> None:
+        """Color the solution cells and passages."""
+        row, col = self._entry[1], self._entry[0]
+        steps = {"N": (-1, 0), "E": (0, 1),
+                 "S": (1, 0), "W": (0, -1)}
+        for direction in self._solution:
+            dr, dc = steps[direction]
             y, x = cell_position(row, col)
-            for offset in range(CELL_WIDTH - 1):
-                styles[(y, x + offset)] = self._path_color
-            for direction in self._solution:
-                dr, dc = steps[direction]
-                y, x = cell_position(row, col)
-                if dr:
-                    for offset in range(CELL_WIDTH - 1):
-                        canvas[y + dr][x + offset] = " "
-                        styles[(y + dr, x + offset)] = self._path_color
-                else:
-                    passage_col = x + 3 if dc > 0 else x - 1
-                    canvas[y][passage_col] = " "
-                    styles[(y, passage_col)] = self._path_color
-                row += dr
-                col += dc
-                y, x = cell_position(row, col)
-                for offset in range(CELL_WIDTH - 1):
-                    styles[(y, x + offset)] = self._path_color
+            if dr:
+                self._color_span(styles, y + dr, x, self._path_color)
+            else:
+                passage_col = x + CELL_WIDTH - 1 if dc > 0 else x - 1
+                styles[(y, passage_col)] = self._path_color
+            row += dr
+            col += dc
+            y, x = cell_position(row, col)
+            self._color_span(styles, y, x, self._path_color)
 
+    def _mark_endpoints(
+        self, canvas: list[list[str]], styles: dict[tuple[int, int], int],
+    ) -> None:
+        """Draw entry and exit markers with full-cell backgrounds."""
         for (x, y), marker, color in (
-            (self._entry, "E", 45), (self._exit, "X", 41),
+            (self._entry, "E", 45),
+            (self._exit, "X", 41),
         ):
             screen_row, screen_col = cell_position(y, x)
-            for offset in range(CELL_WIDTH - 1):
-                canvas[screen_row][screen_col + offset] = " "
-                styles.pop((screen_row, screen_col + offset), None)
-            canvas[screen_row][screen_col] = (
-                f"\x1b[{color};97m{marker}\x1b[0;{self._wall_color}m"
-            )
 
+            self._color_span(styles, screen_row, screen_col, color)
+
+            middle = screen_col + (CELL_WIDTH - 1) // 2
+            canvas[screen_row][middle] = f"\x1b[97m{marker}"
+
+    def _to_ansi(
+        self, canvas: list[list[str]], styles: dict[tuple[int, int], int],
+    ) -> list[str]:
+        """Convert the styled canvas to ANSI-colored output lines."""
         lines = []
         for row, cells in enumerate(canvas):
             line = []
@@ -113,6 +144,11 @@ class Renderer:
                 style_color = styles.get((row, col))
                 if style_color is None:
                     line.append(value)
+                elif style_color == 7:
+                    line.append(
+                        f"\x1b[0;{style_color}m{value}"
+                        f"\x1b[0;{self._wall_color}m"
+                    )
                 else:
                     line.append(
                         f"\x1b[{style_color}m{value}"
@@ -130,11 +166,9 @@ class Renderer:
         """Toggle visibility without changing the maze or its solution."""
         self._show_path = not self._show_path
 
-    def randomize_color(self) -> None:
+    def rotate_wall_color(self) -> None:
         """Choose a different ANSI wall color without changing geometry."""
-        self._wall_color = random.choice(
-            [color for color in range(31, 38) if color != self._wall_color]
-        )
+        self._wall_color = 31 + (self._wall_color - 30) % 7
 
     def rotate_path_color(self) -> None:
         """Rotate the solution background without changing the path."""

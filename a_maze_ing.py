@@ -18,11 +18,15 @@ def main() -> None:
             return
         maze, solution = generation(config)
         renderer = Renderer(
-            maze, solution, show_path=True,
-            entry=config.entry, exit=config.exit,
+            maze, config.entry, config.exit,
+            solution, show_path=True
         )
-        renderer.render()
-        run_menu(config, renderer)
+        print("\x1b[?1049h\x1b[?1007l", end="", flush=True)
+        try:
+            renderer.render()
+            run_menu(config, renderer)
+        finally:
+            print("\x1b[?1049l", end="", flush=True)
 
     except (EOFError, KeyboardInterrupt):
         print("\nExiting.")
@@ -49,32 +53,27 @@ def run_menu(config: Config, rend: Renderer) -> None:
         except ValueError:
             print("Please enter a number from 1 to 6.")
             continue
-        try:
-            match choice:
-                case 1:
-                    if config.seed is None:
-                        raise RuntimeError("Seed is missing")
-                    config.seed += 1
-                    maze, solution = generation(config)
-                    rend.update(maze, solution)
-                case 2:
-                    rend.toggle_path()
-                case 3:
-                    rend.randomize_color()
-                case 4:
-                    rend.rotate_path_color()
-                case 5:
-                    rend.rotate_pattern_color()
-                case 6:
-                    break
-                case _:
-                    print("Please enter a number from 1 to 6.")
-                    continue
-            rend.render()
-        except OverflowError:
-            print("Error: WIDTH or HEIGHT is too large for this system.")
-        except (OSError, ValueError, MemoryError) as error:
-            print(f"Error: {error}")
+        match choice:
+            case 1:
+                if config.seed is None:
+                    raise RuntimeError("Seed is missing")
+                config.seed += 1
+                maze, solution = generation(config)
+                rend.update(maze, solution)
+            case 2:
+                rend.toggle_path()
+            case 3:
+                rend.rotate_wall_color()
+            case 4:
+                rend.rotate_path_color()
+            case 5:
+                rend.rotate_pattern_color()
+            case 6:
+                break
+            case _:
+                print("Please enter a number from 1 to 6.")
+                continue
+        rend.render()
 
 
 def generation(config: Config) -> tuple[list[list[int]], str]:
